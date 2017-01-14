@@ -1,7 +1,7 @@
 import nbt
 import os
 import sys
-import convertmcid
+import bo3convert
 
 newname = 'bo3'
 xoff = 0
@@ -32,7 +32,7 @@ for file in nbtfiles:
 	nbtee = nbt.nbt.NBTFile(location + "\\" + file)
 	pal = []
 	for tag in nbtee['palette']:
-		pal.append(convertmcid.convertNBTToBlock(tag))
+		pal.append(bo3convert.convertNBTToBlock(tag))
 	
 	# Grab templates
 	template = open('template.txt', 'r')
