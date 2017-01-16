@@ -37,7 +37,6 @@ length = int(schematic['Length'].value)
 width = int(schematic['Width'].value)
 blocks = schematic['Blocks']
 data = schematic['Data']
-tileent = schematic['TileEntities']
 tiletemp = ['54', '52', '138', '137']
 bbchest = True
 
@@ -45,72 +44,54 @@ bbchest = True
 assert length <= 160 and width <= 160, name + ".schematic is too large to convert to bo3. bo3 files can only handle structure dimensions up to 160x160 blocks (10x10 chunks)"
 
 # Create nbt files from schematic
-# Create folders first
 nbtlocation = outlocation + os.sep + 'nbt'
-if not os.path.isdir(nbtlocation):
-        os.mkdir(nbtlocation)
 chestlocation = nbtlocation + os.sep + 'Chests'
-if not os.path.isdir(chestlocation):
-        os.mkdir(chestlocation)
 spawnerlocation = nbtlocation + os.sep + 'Spawner'
-if not os.path.isdir(spawnerlocation):
-        os.mkdir(spawnerlocation)
 misclocation = nbtlocation + os.sep + 'Misc'
-if not os.path.isdir(misclocation):
-        os.mkdir(misclocation)
-# Cycle through tile entities and create nbt files and lists
-if tileent:
+if schematic['TileEntities']:
         print("Creating nbt files...")
-chests = []
-spawners = []
-misc = []
-for ent in tileent:
-        if str(ent['id']) == 'minecraft:chest':
-                chests.append(nbt.NBTFile())
-                i = len(chests)-1
-                chests[i].name = name + "-Chest" + str(i+1)
-                chests[i].tags.append(ent['Items'])
-                chests[i].tags.append(ent['id'])
-                chests[i].write_file(chestlocation+os.sep+chests[i].name+".nbt")
-                chests[i].tags.append(ent['x'])
-                chests[i].tags.append(ent['y'])
-                chests[i].tags.append(ent['z'])
+# Create a counter dictionary to record how many of each type we have for names
+# Better than checking the list each time which results in O*!N (I think?)
+class Counter(dict):
+        def __missing__(self, key):
+                return 0
+tiles = Counter()
+tileent = []
+# Cycle through tile entities to create nbt files and add them to a list for name/coord storage
+for ent in schematic['TileEntities']:
+        # Create Directory if it doesn't exist
+        if not os.path.isdir(nbtlocation):
+                os.mkdir(nbtlocation)
+        # Create name for file
+        file = nbt.NBTFile()
+        file.name = name + "-" + str(ent['id'])[str(ent['id']).find(':')+1:].title()
+        tiles[str(ent['id'])] += 1
+        file.name += str(tiles[str(ent['id'])])
+        # Append all tags but x,y,z
+        for i in range(len(ent)):
+                # The below line in comment only filters out x,y,z and not the World Edit stuff
+                #if not (ent[i].name == 'x' or ent[i].name == 'y' or ent[i].name == 'z'):
+                if not isinstance(ent[i], nbt.TAG_Int):
+                        file.tags.append(ent[i])
+        # Write File
+        if str(ent['id']) == 'minecraft:chest' or str(ent['id']) == 'minecraft:trapped_chest':
+                if not os.path.isdir(chestlocation):
+                        os.mkdir(chestlocation)
+                file.write_file(chestlocation+os.sep+file.name+".nbt")
         elif str(ent['id']) == 'minecraft:mob_spawner':
-                spawners.append(nbt.NBTFile())
-                i = len(spawners)-1
-                spawners[i].name = name + "-Spawner" + str(i+1)
-                spawners[i].tags.append(ent['SpawnData'])
-                spawners[i].tags.append(ent['SpawnPotentials'])
-                spawners[i].tags.append(ent['Delay'])
-                spawners[i].tags.append(ent['id'])
-                spawners[i].tags.append(ent['MaxNearbyEntities'])
-                spawners[i].tags.append(ent['MaxSpawnDelay'])
-                spawners[i].tags.append(ent['MinSpawnDelay'])
-                spawners[i].tags.append(ent['RequiredPlayerRange'])
-                spawners[i].tags.append(ent['SpawnCount'])
-                spawners[i].tags.append(ent['SpawnRange'])
-                spawners[i].write_file(spawnerlocation+os.sep+spawners[i].name+".nbt")
-                spawners[i].tags.append(ent['x'])
-                spawners[i].tags.append(ent['y'])
-                spawners[i].tags.append(ent['z'])
+                if not os.path.isdir(spawnerlocation):
+                        os.mkdir(spawnerlocation)
+                file.write_file(spawnerlocation+os.sep+file.name+".nbt")
         else:
-                misc.append(nbt.NBTFile())
-                i = len(misc)-1
-                misc[i].tags.append(ent['id'])
-                if str(ent['id']) == 'minecraft:command_block':
-                        misc[i].name = name + "-CommandBlock" +str(i+1)
-                elif str(ent['id']) == 'minecraft:beacon':
-                        misc[i].name = name + "-Beacon" +str(i+1)
-                        misc[i].tags.append(ent['Levels'])
-                        misc[i].tags.append(ent['Lock'])
-                        misc[i].tags.append(ent['Primary'])
-                        misc[i].tags.append(ent['Secondary'])
-                misc[i].write_file(misclocation+os.sep+misc[i].name+".nbt")
-                misc[i].tags.append(ent['x'])
-                misc[i].tags.append(ent['y'])
-                misc[i].tags.append(ent['z'])
+                if not os.path.isdir(misclocation):
+                        os.mkdir(misclocation)
+                file.write_file(misclocation+os.sep+file.name+".nbt")
+        # Add coords and append to list for future reference in bo3 building
+        file.tags.append(ent['x'])
+        file.tags.append(ent['y'])
+        file.tags.append(ent['z'])
+        tileent.append(file)
 
-                
 # Create bo3
 # Create arrays of bo3 outfiles if bigger than chunk
 if length > 16 or width > 16:
@@ -136,43 +117,33 @@ for x in range(width):
         for z in range(length):
                 for y in range(height):
                         i = (y*length+z)*width+x
+                        line = 'Block('
                         mcid = str(blocks[i])
-                        if mcid in tiletemp:
-                                line = "RandomBlock("
-                                if mcid == '54':
-                                        mcid = "CHEST,../../nbt/Chests/"
-                                        print(str(x)+':'+str(y)+":"+str(z))
-                                        for j in range(len(chests)):
-                                                if x == chests[j]['x'].value and z == chests[j]['z'].value and y == chests[j]['y'].value:
-                                                        if bbchest:
-                                                                if chests[j]['Items'].__len__() == 1:
-                                                                        if str(chests[j]['Items'][0]['id']) == 'minecraft:iron_block':
-                                                                                mcid = 'CHEST,../../nbt/Chests/Common1.nbt,25,CHEST,../../nbt/Chests/Common2.nbt,25,CHEST,../../nbt/Chests/Common3.nbt,25,CHEST,../../nbt/Chests/Common4.nbt,25,CHEST,../../nbt/Chests/Common5.nbt,25,CHEST,../../nbt/Chests/Common6.nbt,25,CHEST,../../nbt/Chests/Common7.nbt,25,CHEST,../../nbt/Chests/Common8.nbt,25,CHEST,../../nbt/Chests/Common9.nbt,25,CHEST,../../nbt/Chests/Common10.nbt,25,CHEST,../../nbt/Chests/Common11.nbt,25,CHEST,../../nbt/Chests/Common12.nbt,25,CHEST,../../nbt/Chests/Common13.nbt,25,CHEST,../../nbt/Chests/Common14.nbt,25,CHEST,../../nbt/Chests/Common15.nbt,100'
-                                                                        elif str(chests[j]['Items'][0]['id']) == 'minecraft:gold_block':
-                                                                                mcid = 'CHEST,../../nbt/Chests/Rare1.nbt,25,CHEST,../../nbt/Chests/Rare2.nbt,25,CHEST,../../nbt/Chests/Rare3.nbt,25,CHEST,../../nbt/Chests/Rare4.nbt,25,CHEST,../../nbt/Chests/Rare5.nbt,25,CHEST,../../nbt/Chests/Rare6.nbt,25,CHEST,../../nbt/Chests/Rare7.nbt,25,CHEST,../../nbt/Chests/Rare8.nbt,25,CHEST,../../nbt/Chests/Rare9.nbt,25,CHEST,../../nbt/Chests/Rare10.nbt,25,CHEST,../../nbt/Chests/Rare11.nbt,25,CHEST,../../nbt/Chests/Rare12.nbt,25,CHEST,../../nbt/Chests/Rare13.nbt,25,CHEST,../../nbt/Chests/Rare14.nbt,25,CHEST,../../nbt/Chests/Rare15.nbt,100'
-                                                                        elif str(chests[j]['Items'][0]['id']) == 'minecraft:diamond_block':
-                                                                                mcid = 'CHEST,../../nbt/Chests/Epic1.nbt,25,CHEST,../../nbt/Chests/Epic2.nbt,25,CHEST,../../nbt/Chests/Epic3.nbt,25,CHEST,../../nbt/Chests/Epic4.nbt,25,CHEST,../../nbt/Chests/Epic5.nbt,25,CHEST,../../nbt/Chests/Epic6.nbt,25,CHEST,../../nbt/Chests/Epic7.nbt,25,CHEST,../../nbt/Chests/Epic8.nbt,25,CHEST,../../nbt/Chests/Epic9.nbt,25,CHEST,../../nbt/Chests/Epic10.nbt,25,CHEST,../../nbt/Chests/Epic11.nbt,25,CHEST,../../nbt/Chests/Epic12.nbt,25,CHEST,../../nbt/Chests/Epic13.nbt,25,CHEST,../../nbt/Chests/Epic14.nbt,25,CHEST,../../nbt/Chests/Epic15.nbt,100'
-                                                                        else:
-                                                                                mcid += chests[j].name+".nbt,100"
-                                                                else:
-                                                                        mcid += chests[j].name+".nbt,100"
-                                                                        
-                                                        else:
-                                                                mcid += chests[j].name+".nbt,100"
-                                elif mcid == '52':
-                                        mcid = "MOB_SPAWNER,../../nbt/Spawner/"
-                                        for j in range(len(spawners)):
-                                                if x == spawners[j]['x'].value and z == spawners[j]['z'].value and y == spawners[j]['y'].value:
-                                                        mcid += spawners[j].name+".nbt,100"
-                                else:
-                                        mcid += ",../../nbt/Misc/"
-                                        for j in range(len(misc)):
-                                                if x == misc[j]['x'].value and z == misc[j]['z'].value and y == misc[j]['y'].value:
-                                                        mcid += misc[j].name+".nbt,100"
-                        else:
-                                line = "Block("
-                                if data[i] != 0:
-                                        mcid += ":"+str(data[i])
+                        if data[i] != 0:
+                                mcid += ':' + str(data[i])
+                        # change mcid and line if block is a tileent
+                        for ent in tileent:
+                                if x == ent['x'].value and y == ent['y'].value and z == ent['z'].value:
+                                        line = 'RandomBlock('
+                                        if str(ent['id']) == 'minecraft:chest':
+                                                if bbchest and len(ent['Items']) == 1:
+                                                        if str(ent['Items'][0]['id']) == 'minecraft:iron_block':
+                                                                mcid = 'CHEST,../../nbt/Chests/Common1.nbt,25,CHEST,../../nbt/Chests/Common2.nbt,25,CHEST,../../nbt/Chests/Common3.nbt,25,CHEST,../../nbt/Chests/Common4.nbt,25,CHEST,../../nbt/Chests/Common5.nbt,25,CHEST,../../nbt/Chests/Common6.nbt,25,CHEST,../../nbt/Chests/Common7.nbt,25,CHEST,../../nbt/Chests/Common8.nbt,25,CHEST,../../nbt/Chests/Common9.nbt,25,CHEST,../../nbt/Chests/Common10.nbt,25,CHEST,../../nbt/Chests/Common11.nbt,25,CHEST,../../nbt/Chests/Common12.nbt,25,CHEST,../../nbt/Chests/Common13.nbt,25,CHEST,../../nbt/Chests/Common14.nbt,25,CHEST,../../nbt/Chests/Common15.nbt,100'
+                                                        elif str(ent['Items'][0]['id']) == 'minecraft:gold_block':
+                                                                mcid = 'CHEST,../../nbt/Chests/Rare1.nbt,25,CHEST,../../nbt/Chests/Rare2.nbt,25,CHEST,../../nbt/Chests/Rare3.nbt,25,CHEST,../../nbt/Chests/Rare4.nbt,25,CHEST,../../nbt/Chests/Rare5.nbt,25,CHEST,../../nbt/Chests/Rare6.nbt,25,CHEST,../../nbt/Chests/Rare7.nbt,25,CHEST,../../nbt/Chests/Rare8.nbt,25,CHEST,../../nbt/Chests/Rare9.nbt,25,CHEST,../../nbt/Chests/Rare10.nbt,25,CHEST,../../nbt/Chests/Rare11.nbt,25,CHEST,../../nbt/Chests/Rare12.nbt,25,CHEST,../../nbt/Chests/Rare13.nbt,25,CHEST,../../nbt/Chests/Rare14.nbt,25,CHEST,../../nbt/Chests/Rare15.nbt,100'
+                                                        elif str(ent['Items'][0]['id']) == 'minecraft:diamond_block':
+                                                                mcid = 'CHEST,../../nbt/Chests/Epic1.nbt,25,CHEST,../../nbt/Chests/Epic2.nbt,25,CHEST,../../nbt/Chests/Epic3.nbt,25,CHEST,../../nbt/Chests/Epic4.nbt,25,CHEST,../../nbt/Chests/Epic5.nbt,25,CHEST,../../nbt/Chests/Epic6.nbt,25,CHEST,../../nbt/Chests/Epic7.nbt,25,CHEST,../../nbt/Chests/Epic8.nbt,25,CHEST,../../nbt/Chests/Epic9.nbt,25,CHEST,../../nbt/Chests/Epic10.nbt,25,CHEST,../../nbt/Chests/Epic11.nbt,25,CHEST,../../nbt/Chests/Epic12.nbt,25,CHEST,../../nbt/Chests/Epic13.nbt,25,CHEST,../../nbt/Chests/Epic14.nbt,25,CHEST,../../nbt/Chests/Epic15.nbt,100'
+                                                else:
+                                                        mcid = 'CHEST,../../nbt/Chests/' + ent.name + '.nbt,100'
+                                        elif str(ent['id']) == 'minecraft:trapped_chest':
+                                                if bbchest:
+                                                        mcid = 'TRAPPED_CHEST,../../nbt/Chests/TrappedChest1.nbt,25,TRAPPED_CHEST,../../nbt/Chests/TrappedChest2.nbt,25,TRAPPED_CHEST,../../nbt/Chests/TrappedChest3.nbt,25,TRAPPED_CHEST,../../nbt/Chests/TrappedChest4.nbt,25,TRAPPED_CHEST,../../nbt/Chests/TrappedChest5.nbt,25,TRAPPED_CHEST,../../nbt/Chests/TrappedChest6.nbt,25,TRAPPED_CHEST,../../nbt/Chests/TrappedChest7.nbt,25,TRAPPED_CHEST,../../nbt/Chests/TrappedChest8.nbt,100'
+                                                else:
+                                                        mcid = 'TRAPPED_CHEST,../../nbt/Chests/' + ent.name + '.nbt,100'
+                                        elif str(ent['id']) == 'minecraft:mob_spawner':
+                                                mcid = 'MOB_SPAWNER,../../nbt/Spawner/' + ent.name  + '.nbt,100'
+                                        else:
+                                                mcid += ',../../nbt/Misc/' + ent.name  + '.nbt,100'
                         line += str(x%16-8)+","+str(y)+","+str(z%16-7)+","+mcid
                         line += ")\n"
                         if hasattr(outfile, 'read'):
