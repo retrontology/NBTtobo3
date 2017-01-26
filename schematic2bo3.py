@@ -1,3 +1,7 @@
+import pip
+
+pip.main(['install','nbt'])
+
 from nbt import *
 import os
 import math
@@ -119,8 +123,7 @@ for x in range(width):
                         i = (y*length+z)*width+x
                         line = 'Block('
                         mcid = str(blocks[i])
-                        if data[i] != 0:
-                                mcid += ':' + str(data[i])
+                        mcid += ':' + str(data[i])
                         # change mcid and line if block is a tileent
                         for ent in tileent:
                                 if x == ent['x'].value and y == ent['y'].value and z == ent['z'].value:
